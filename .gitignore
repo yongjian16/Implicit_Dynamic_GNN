@@ -1,0 +1,11 @@
+*.drawio
+*.pickle
+Implicit_Dynamic_GCN/
+*.sh
+*.ipynb
+src/
+log/
+.vscode/
+.rsync.ignore
+note.md
+*.bkp
