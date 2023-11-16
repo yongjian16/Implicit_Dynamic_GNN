@@ -64,7 +64,6 @@ def main(*ARGS):
     add_neuralnet_arguments(parser)
     add_tune_arguments(parser)
     args = parser.parse_args() if len(ARGS) == 0 else parser.parse_args(ARGS)
-
     # Localize arguments.
     source = args.source
     target = args.target
@@ -91,18 +90,14 @@ def main(*ARGS):
     # arguments for IDGNN
     args.kappa = 0.95
     args.phi = torch.nn.ReLU()
-    args.multi_z = True
-    args.multi_x = False
-    args.regression = False
-    args.theta = 0.5 
+    args.regression = True
     args.eta_1 = 0.9
     args.eta_2 = 0.001
 
     # Constant arguments.
     # TGAT will run out of memory on the testing machine.
     # Temporarily reduce to 128.
-    # num_batch_graphs = 128
-    num_batch_graphs = 60 # PeMS04 = 16980 / 283
+    num_batch_graphs = 128
 
     #
     if len(train_prop) > 0:

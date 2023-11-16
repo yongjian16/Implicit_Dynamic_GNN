@@ -77,7 +77,6 @@ class ImpDynModelCls(DynamicGraph):
         /,
         Z = None,
         A_rho = None,
-        A_list = None,
     ) -> List[torch.Tensor]:
         R"""
         Forward.
@@ -111,13 +110,13 @@ class ImpDynModelCls(DynamicGraph):
         node_embeds = (
             self.tgnn.forward(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
+                node_times, node_masks, Z=Z, A_rho=A_rho,
             )
         )
         if len(self.notembedon) == 0:
             #
             predictions = self.mlp(self.activate(node_embeds))
-        # import pdb;pdb.set_trace()
+
         return [node_embeds], predictions
     
     def predict(
@@ -129,8 +128,6 @@ class ImpDynModelCls(DynamicGraph):
         node_masks: torch.Tensor,
         /,
         Z = None,
-        A_rho = None,
-        A_list = None,
     ) -> List[torch.Tensor]:
         R"""
         Forward.
@@ -164,7 +161,7 @@ class ImpDynModelCls(DynamicGraph):
         node_embeds = (
             self.tgnn.predict(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
+                node_times, node_masks, Z=Z,
             )
         )
         if len(self.notembedon) == 0:
@@ -221,17 +218,19 @@ class ImpDynModelCls(DynamicGraph):
         )
         device = Z.device
 
-        lower_loss = ((Z_1-Z.reshape(-1))**2).sum()
-
+        lower_loss = ((Z_1.reshape(-1)-Z.reshape(-1))**2).sum()
+        org_shape = Z_0.shape
         z_grad = torch.autograd.grad(upper_loss, Z_1, retain_graph=True)[0]    
-        Z_0 = (1 - eta_1)*Z_0 + eta_1*Z.reshape(-1).detach().cpu()
+
+        Z_0 = (1 - eta_1)*Z_0 + eta_1*Z.reshape(*org_shape).detach().cpu()
         g_z_grad = torch.autograd.grad(lower_loss, Z_1, retain_graph=True, create_graph=True)[0]
 
-        hv = torch.inner(g_z_grad,V_0.to(device))
-        phi_v = torch.autograd.grad(hv, Z_1, retain_graph=True)[0]
+        hv = torch.sum(g_z_grad*V_0.to(device), dim=-1)
+
+        phi_v = torch.autograd.grad(hv.sum(), Z_1, retain_graph=True)[0]
         V_0 = V_0 - eta_2*phi_v.cpu() + eta_2*z_grad.cpu()
 
-        loss = upper_loss - torch.inner(g_z_grad,V_0.to(device))
+        loss = upper_loss - torch.sum(g_z_grad*V_0.to(device))
         return loss, Z_0, V_0
 
 

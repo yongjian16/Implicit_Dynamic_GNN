@@ -57,6 +57,18 @@ def add_tune_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+            "--multi-z",
+            action='store_true', help="Use multiple gcn layers for embedding in implicit model", 
+            default=False,
+        )
+    
+    parser.add_argument(
+            "--multi-x",
+            action='store_true', help="Use multiple gcn layers for node features in implicit model", 
+            default=False,
+        )
+
+    parser.add_argument(
         "--exp-name",
         type=str, required=False, help="Experiment name.", default="",
     )

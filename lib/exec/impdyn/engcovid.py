@@ -105,16 +105,13 @@ def main(*ARGS):
     # arguments for IDGNN
     args.kappa = 0.95
     args.phi = torch.nn.ReLU()
-    args.multi_z = True
-    args.multi_x = False
-    args.regression = False
+    args.regression = True
     args.theta = 0.5 
     args.eta_1 = 0.9
     args.eta_2 = 0.001
     # Constant arguments.
     # TODO: Rerun by 64 later (which should not have great difference).
-    # num_batch_graphs = 64
-    num_batch_graphs = 2
+    num_batch_graphs = 64
 
     #
     if len(train_prop) > 0:

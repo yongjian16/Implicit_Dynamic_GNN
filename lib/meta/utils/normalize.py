@@ -33,8 +33,7 @@ def normalize(
     array: onpt.NDArray[onp.generic], fromarray: onpt.NDArray[onp.generic],
     /,
     *,
-    axis: Union[int, Tuple[int, ...]],
-    ymin: float = 0.0, ymax: float = 1.0,
+    axis: Union[int, Tuple[int, ...]]
 ) -> Tuple[onpt.NDArray[onp.generic], List[Tuple[float, float]]]:
     R"""
     Normalize array only on a specific axis.
@@ -55,8 +54,7 @@ def normalize(
     vsizes[vsizes == 0] = 1
 
     # Normalize given array by collected factors.
-    # array = (array - vmins) / vsizes
-    array = ymin + (ymax-ymin) * (array - vmins) / vsizes
+    array = (array - vmins) / vsizes
 
     # Format collected factors.
     num = max(vsizes.shape)

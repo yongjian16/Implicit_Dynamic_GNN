@@ -379,7 +379,7 @@ def encoderize(
             convolve=None, skip=False, activate=activation, 
             num_nodes=num_nodes, window_size=window_size, kappa=args.kappa,
             phi=args.phi, multi_z=args.multi_z, multi_x=args.multi_x,
-            regression=args.regression, theta=args.theta
+            regression=args.regression
         )
     
     return (

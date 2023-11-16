@@ -15,9 +15,7 @@ import torch.nn.functional as F
 
 from torch_geometric.nn import GCNConv
 from torch.nn import Parameter
-from .utils import (projection_norm_inf, aug_normalized_adjacency, 
-                    sparse_mx_to_torch_sparse_tensor, get_spectral_rad)
-from scipy.sparse import coo_array
+from .utils import projection_norm_inf
 
 class IDGNN(Model):
     R"""
@@ -32,7 +30,7 @@ class IDGNN(Model):
         convolve: str, skip: bool, activate: str,
         num_nodes, window_size, kappa=0.99, 
         phi=None, multi_z=True, multi_x=False, 
-        regression=False, theta=0.5,
+        regression=False,
     ) -> None:
         R"""
         Initialize the class.
@@ -40,7 +38,6 @@ class IDGNN(Model):
         #
         Model.__init__(self)
 
-        self.theta = theta
         self.k = kappa
         self.embed_inside_size = embed_inside_size
         self.num_nodes = num_nodes
@@ -79,13 +76,16 @@ class IDGNN(Model):
         for gcn in self.gcn_z:
             gcn.lin.weight.data.uniform_(-stdv, stdv)
             numels += gcn.lin.weight.numel()
-        # stdv = 1 / math.sqrt(self.lin_x[0].weight.shape[0])
-        # for lin in self.lin_x:
-        #     lin.weight.data.uniform_(0, stdv)
-        stdv = 1 / math.sqrt(self.gcn_x[0].lin.weight.shape[0])
-        for gcn in self.gcn_x:
-            gcn.lin.weight.data.uniform_(-stdv, stdv)
-            numels += gcn.lin.weight.numel()
+        if hasattr(self, 'gcn_x'):
+            stdv = 1 / math.sqrt(self.gcn_x[0].lin.weight.shape[0])
+            for gcn in self.gcn_x:
+                gcn.lin.weight.data.uniform_(-stdv, stdv)
+                numels += gcn.lin.weight.numel()
+        elif hasattr(self, 'lin_x'):
+            stdv = 1 / math.sqrt(self.lin_x[0].weight.shape[0])
+            for lin in self.lin_x:
+                lin.weight.data.uniform_(0, stdv)
+                numels += lin.weight.numel()
         return numels
     
     def glorot(self, module, rng):
@@ -149,74 +149,71 @@ class IDGNN(Model):
         #     resetted = resetted + glorot(gcn, rng)
         for lin in self.lin_x:
             resetted = resetted + self.glorot(lin, rng)
-        # if self.regression:
-        #     for lin in self.regressor:
-        #         if isinstance(lin, nn.Linear):
-        #             resetted = resetted + glorot(lin, rng)
-        # else:
-        #     for lin in self.classifier:
-        #         if isinstance(lin, nn.Linear):
-        #             resetted = resetted + glorot(lin, rng)
 
         self.Z_0.data.uniform_(0, 1)
         resetted += self.Z_0.numel()
         return resetted
     
-    def project(self, X_list, A_list, A_rho=None):
-        # self.X_list = X_list
-        # self.A_list = A_list
+    def project(self, A_rho=None):
         if A_rho is not None:
             for i, gcn in enumerate(self.gcn_z):
-                gcn.lin.weight.data = projection_norm_inf(gcn.lin.weight.data, kappa=self.k / A_rho[i])
+                gcn.lin.weight.data = projection_norm_inf(gcn.lin.weight.data, 
+                                                          kappa=self.k / A_rho[i])
 
+    def _forward_old(self,
+        edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
+        edge_ranges: torch.Tensor, edge_times: torch.Tensor,
+        node_feats: torch.Tensor, node_times: torch.Tensor,
+        node_masks: torch.Tensor,
+        /,
+        Z=None
+    ) -> torch.Tensor:
+
+        (_, num_times) = edge_ranges.shape
+
+        # Forward
+        for i in range(num_times):
+            edge_snap_slice = slice(edge_ranges[0, i], edge_ranges[1, i])
+            X, A, Aw = node_feats[:, :, i], edge_tuples[:, edge_snap_slice], edge_feats[edge_snap_slice, :]
+            # X, A =  node_feats[:, :, i], A_list[i]
+
+            support1 = self.gcn_z[i](Z, A, Aw) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A, Aw)
+            # support1 = self.gcn_z[i](Z, A) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A)
+            support2 = self.lin_x[i](X) if len(self.lin_x)>1 else self.lin_x[0](X)
+            # support2 = self.gcn_x[i](X, A) if len(self.gcn_x)>1 else self.gcn_x[0](X, A)
+            # Z = self.phi(self.theta*support1 + (1-self.theta)*support2)
+            Z = self.phi(support1 + support2)
+        
+        # if self.regression:
+        #     out = self.regressor(Z).squeeze()
+        # else:
+        #     out = self.classifier(Z).squeeze()
+        # import pdb;pdb.set_trace()
+        return Z
+    
     def _forward(self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_ranges: torch.Tensor, edge_times: torch.Tensor,
         node_feats: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         /,
-        Z=None,
-        A_rho=None,
-        A_list=None,
+        Z:torch.Tensor=None,
     ) -> torch.Tensor:
-        '''
-        # EngCovid
-        # edge_tuples: torch.Size([2, 36042])
-        # edge_feats: torch.Size([36042, 1])
-        # edge_ranges: torch.Size([2, 7])
-        # tensor([[    0,  5524, 10652, 15470, 20875, 26153, 31341],
-        #         [ 5524, 10652, 15470, 20875, 26153, 31341, 36042]])
-
-        # edge_times: torch.Size([]), tensor(0.)
-        # node_feats: torch.Size([516, 1, 7]) # 516 nodes, 1 feature, 7 time steps
-        # node_times: torch.Size([]), tensor(0.)
-        # node_masks: torch.Size([516])
-        '''
-        
         (_, num_times) = edge_ranges.shape
 
-        self.project(node_feats, edge_tuples, A_rho)
         # Forward
         for i in range(num_times):
             edge_snap_slice = slice(edge_ranges[0, i], edge_ranges[1, i])
             X, A, Aw = node_feats[:, :, i], edge_tuples[:, edge_snap_slice], edge_feats[edge_snap_slice, :]
-            # X, A =  node_feats[:, :, i], A_list[i]
 
             support1 = self.gcn_z[i](Z, A, Aw) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A, Aw)
-            # support1 = self.gcn_z[i](Z, A) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A)
             support2 = self.lin_x[i](X) if len(self.lin_x)>1 else self.lin_x[0](X)
             # support2 = self.gcn_x[i](X, A) if len(self.gcn_x)>1 else self.gcn_x[0](X, A)
-            # Z = self.phi(self.theta*support1 + (1-self.theta)*support2)
             Z = self.phi(support1 + support2)
-        
-        # if self.regression:
-        #     out = self.regressor(Z).squeeze()
-        # else:
-        #     out = self.classifier(Z).squeeze()
-        # import pdb;pdb.set_trace()
+
         return Z
     
-    def _forward_batch(self,
+    def forward_old(self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_ranges: torch.Tensor, edge_times: torch.Tensor,
         node_feats: torch.Tensor, node_times: torch.Tensor,
@@ -224,67 +221,22 @@ class IDGNN(Model):
         /,
         Z=None,
         A_rho=None,
-        A_list=None,
-    ) -> torch.Tensor:
-        '''
-        # EngCovid - batch_size = max(64,54)
-        # edge_tuples: torch.Size([2, 637360])
-        # edge_feats: torch.Size([637360, 1])
-        # edge_ranges: torch.Size([2, 7])
-        # tensor([[     0,  95064, 185301, 273041, 366255, 457973, 548092],
-        #        [ 95064, 185301, 273041, 366255, 457973, 548092, 637360]])
-        # edge_times: torch.Size([]), tensor(0.)
-        # node_feats: torch.Size([8256, 1, 7]) # 8256 nodes = 129 * 64, 1 feature, 7 time steps
-        # node_times: torch.Size([]), tensor(0.)
-        # node_masks: torch.Size([516])
-        '''
-        (_, num_times) = edge_ranges.shape
-
-        self.project(node_feats, edge_tuples, A_rho)
-        # Forward
-        for i in range(num_times):
-            edge_snap_slice = slice(edge_ranges[0, i], edge_ranges[1, i])
-            X, A, Aw = node_feats[:, :, i], edge_tuples[:, edge_snap_slice], edge_feats[edge_snap_slice, :]
-            # X, A =  node_feats[:, :, i], A_list[i]
-
-            support1 = self.gcn_z[i](Z, A, Aw) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A, Aw)
-            # support1 = self.gcn_z[i](Z, A) if len(self.gcn_z)>1 else self.gcn_z[0](Z, A)
-            support2 = self.lin_x[i](X) if len(self.lin_x)>1 else self.lin_x[0](X)
-            # support2 = self.gcn_x[i](X, A) if len(self.gcn_x)>1 else self.gcn_x[0](X, A)
-            # Z = self.phi(self.theta*support1 + (1-self.theta)*support2)
-            Z = self.phi(support1 + support2)
-        
-        # if self.regression:
-        #     out = self.regressor(Z).squeeze()
-        # else:
-        #     out = self.classifier(Z).squeeze()
-        # import pdb;pdb.set_trace()
-        return Z
-    
-    def forward(self,
-        edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
-        edge_ranges: torch.Tensor, edge_times: torch.Tensor,
-        node_feats: torch.Tensor, node_times: torch.Tensor,
-        node_masks: torch.Tensor,
-        /,
-        Z=None,
-        A_rho=None,
-        A_list=None,
     ) -> torch.Tensor:
         self.train()
+        self.project(A_rho)
+
         return self._forward(edge_tuples, edge_feats, edge_ranges, edge_times,
-                        node_feats, node_times, node_masks, Z, A_rho, A_list)
+                        node_feats, node_times, node_masks, Z)
     
     @torch.no_grad()
-    def predict(self,
+    def predict_old(self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_ranges: torch.Tensor, edge_times: torch.Tensor,
         node_feats: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         /,
-        Z=None,
-        A_rho=None,
-        A_list=None,
+        Z:torch.Tensor=None,
+        A_rho:onp.ndarray=None,
         max_iter=500, tol=1e-6,
     ) -> torch.Tensor:
 
@@ -296,7 +248,7 @@ class IDGNN(Model):
         for i in range(max_iter):
             Z_old = Z
             Z = self._forward(edge_tuples, edge_feats, edge_ranges, edge_times, 
-                             node_feats, node_times, node_masks, Z, A_rho=A_rho, A_list=A_list)
+                             node_feats, node_times, node_masks, Z, A_rho=A_rho)
             err = torch.norm(Z - Z_old, onp.inf)
             if err < tol:
                 converged = True
@@ -306,67 +258,46 @@ class IDGNN(Model):
                 
         return Z
     
-    def forward_batch(self,
+    def forward(self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_ranges: torch.Tensor, edge_times: torch.Tensor,
         node_feats: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         /,
-        Z=None,
-        A_rho=None,
-        A_list=None,
+        Z:torch.Tensor=None,
+        A_rho:onp.ndarray=None,
     ) -> torch.Tensor:
-        '''
-        # EngCovid
-        # edge_tuples: torch.Size([2, 36042])
-        # edge_feats: torch.Size([36042, 1])
-        # edge_ranges: torch.Size([2, 7])
-        # tensor([[    0,  5524, 10652, 15470, 20875, 26153, 31341],
-        #         [ 5524, 10652, 15470, 20875, 26153, 31341, 36042]])
-
-        # edge_times: torch.Size([]), tensor(0.)
-        # node_feats: torch.Size([516, 1, 7]) # 516 nodes, 1 feature, 7 time steps
-        # node_times: torch.Size([]), tensor(0.)
-        # node_masks: torch.Size([516])
-        '''
+        
         self.train()
-        return self._forward_batch(edge_tuples, edge_feats, edge_ranges, edge_times,
-                        node_feats, node_times, node_masks, Z, A_rho, A_list)
+        if A_rho.ndim > 1:
+            # if running batch, taking the min value over samples for each timestep
+            A_rho = A_rho.min(axis=0)
+
+        self.project(A_rho)
+
+        return self._forward(edge_tuples, edge_feats, edge_ranges, edge_times,
+                        node_feats, node_times, node_masks, Z)
     
 
     @torch.no_grad()
-    def predict_batch(self,
+    def predict(self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_ranges: torch.Tensor, edge_times: torch.Tensor,
         node_feats: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         /,
-        Z=None,
-        A_rho=None,
-        A_list=None,
+        Z:torch.Tensor=None,
         max_iter=500, tol=1e-6,
     ) -> torch.Tensor:
-        '''
-        # EngCovid
-        # edge_tuples: torch.Size([2, 36042])
-        # edge_feats: torch.Size([36042, 1])
-        # edge_ranges: torch.Size([2, 7])
-        # tensor([[    0,  5524, 10652, 15470, 20875, 26153, 31341],
-        #         [ 5524, 10652, 15470, 20875, 26153, 31341, 36042]])
 
-        # edge_times: torch.Size([]), tensor(0.)
-        # node_feats: torch.Size([516, 1, 7]) # 516 nodes, 1 feature, 7 time steps
-        # node_times: torch.Size([]), tensor(0.)
-        # node_masks: torch.Size([516])
-        '''
         if Z is None:
             Z = self.Z_0
         self.eval()
         converged = False
         for i in range(max_iter):
             Z_old = Z
-            Z = self._forward_batch(edge_tuples, edge_feats, edge_ranges, edge_times, 
-                             node_feats, node_times, node_masks, Z, A_rho=A_rho, A_list=A_list)
+            Z = self._forward(edge_tuples, edge_feats, edge_ranges, edge_times, 
+                             node_feats, node_times, node_masks, Z)
             err = torch.norm(Z - Z_old, onp.inf)
             if err < tol:
                 converged = True

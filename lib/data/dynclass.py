@@ -81,6 +81,7 @@ class DynamicClassification(object):
             self.raw_edge_srcs.append(srcs)
             self.raw_edge_dsts.append(dsts)
             self.raw_edge_feats.append(weights)
+            
         self.timestamps = onp.arange(self.num_times, dtype=onp.float64)
 
     def sanitize_edge(self, /) -> None:

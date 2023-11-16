@@ -69,31 +69,55 @@ def plot_curves(dataset, framework, metric, task, model_name, dynedge = None, lr
     # fpath_pattern = str(Path(rootdir) / fname_pattern)
     # all_fpaths = glob(fpath_pattern)
     # print('pattern: ', fpath_pattern)
-    if seed == '*' or isinstance(seed, int):
-        fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                        (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                        f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
-        if len(exp_name) > 0:
+    if dynedge is None:
+        if seed == '*' or isinstance(seed, int):
             fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                        (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                        f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
-        fpath_pattern = str(Path(rootdir) / fname_pattern)
-        all_fpaths = glob(fpath_pattern)
-    elif isinstance(seed, list):
-        all_fpaths = []
-        for s in seed:
+                            (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
+            if len(exp_name) > 0:
+                fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                            (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
+            fpath_pattern = str(Path(rootdir) / fname_pattern)
+            all_fpaths = glob(fpath_pattern)
+        elif isinstance(seed, list):
+            all_fpaths = []
+            for s in seed:
+                fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                            (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                if len(exp_name) > 0:
+                    fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                fpath_pattern = str(Path(rootdir) / fname_pattern)
+                all_fpaths += glob(fpath_pattern)
+    else:
+        if seed == '*' or isinstance(seed, int):
             fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                        (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                        f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                            (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
             if len(exp_name) > 0:
                 fname_pattern = (f"{dataset}~{target}~{framework}" + 
                             (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                            f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
             fpath_pattern = str(Path(rootdir) / fname_pattern)
-            all_fpaths += glob(fpath_pattern)
+            all_fpaths = glob(fpath_pattern)
+        elif isinstance(seed, list):
+            all_fpaths = []
+            for s in seed:
+                fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                            (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                            f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                if len(exp_name) > 0:
+                    fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                fpath_pattern = str(Path(rootdir) / fname_pattern)
+                all_fpaths += glob(fpath_pattern)
         
     if len(all_fpaths) == 0:
-        print('no files found')
+        print('no files found with pattern: ', fpath_pattern)
         return
     print(f'found {len(all_fpaths)} files')
 
@@ -143,37 +167,66 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
     # EngCOVID~all~induc~none_GCNx2oGRU~16~softplus_0.001~1.0e-5~value~-1_57.ptres
     testset = {}
     valset = {}
+    memories = {}
+    timecosts = {}
     for model_name in model_names:
         res_test_seeds = []
         res_val_seeds = []
-        if seed == '*' or isinstance(seed, int):
-            fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                            (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
-            if len(exp_name) > 0:
+        memories_seeds = []
+        timecosts_seeds = []
+        if dynedge is None:
+            if seed == '*' or isinstance(seed, int):
                 fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                            (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                            f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
-            fpath_pattern = str(Path(rootdir) / fname_pattern)
-            all_fpaths = glob(fpath_pattern)
-        elif isinstance(seed, list):
-            all_fpaths = []
-            for s in seed:
+                                (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
+                if len(exp_name) > 0:
+                    fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
+                fpath_pattern = str(Path(rootdir) / fname_pattern)
+                all_fpaths = glob(fpath_pattern)
+            elif isinstance(seed, list):
+                all_fpaths = []
+                for s in seed:
+                    fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                    if len(exp_name) > 0:
+                        fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                    (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                    fpath_pattern = str(Path(rootdir) / fname_pattern)
+                    all_fpaths += glob(fpath_pattern)
+        else:
+            if seed == '*' or isinstance(seed, int):
                 fname_pattern = (f"{dataset}~{target}~{framework}" + 
-                            (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                            f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                                (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
                 if len(exp_name) > 0:
                     fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
                 fpath_pattern = str(Path(rootdir) / fname_pattern)
-                all_fpaths += glob(fpath_pattern)
+                all_fpaths = glob(fpath_pattern)
+            elif isinstance(seed, list):
+                all_fpaths = []
+                for s in seed:
+                    fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                    if len(exp_name) > 0:
+                        fname_pattern = (f"{dataset}~{target}~{framework}" + 
+                                    (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
+                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                    fpath_pattern = str(Path(rootdir) / fname_pattern)
+                    all_fpaths += glob(fpath_pattern)
         
         # print('pattern: ', fpath_pattern)
         if len(all_fpaths) == 0:
-            print('no files found')
+            print('no files found with pattern: ', fpath_pattern)
             continue
         print(f'found {len(all_fpaths)} files')
+
         for fpath in all_fpaths:
             data = torch.load(fpath)
             metrics_test = data[3]
@@ -187,11 +240,18 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
             if metric == 'ROCAUC':
                 v_valid = -v_valid
             res_val_seeds.append(v_valid)
-        
+            #
+            mem = int(np.ceil(data[4] / 1024))
+            memories_seeds.append(mem)
+            tt = np.mean(data[5]['train.forward'])
+            timecosts_seeds.append(tt)
+
         testset[model_name] = res_test_seeds
         valset[model_name] = res_val_seeds
+        memories[model_name] = memories_seeds
+        timecosts[model_name] = timecosts_seeds
 
-    return valset, testset
+    return valset, testset, memories, timecosts
 
 if __name__ == '__main__':
     
@@ -201,7 +261,7 @@ if __name__ == '__main__':
     parser.add_argument('--task', type=str, default='cls', help='cls/reg')
     parser.add_argument('--framework', type=str, default='trans', help="trans/induc")
     parser.add_argument('--metric', type=str, default='ROCAUC', help="ROCAUC/CE/ERR")
-    parser.add_argument('--dynedge', type=str, default='none', help="dense/none")
+    parser.add_argument('--dynedge', type=str, default=None, help="dense/none/`None`")
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('-wd', '--weight-decay', type=str, default='1.0e-5', help="weigth decay")
     parser.add_argument('--patience', type=int, default=-1, help="patience for early stopping, -1 for no early stopping")
@@ -227,7 +287,7 @@ if __name__ == '__main__':
     if args.model_plot is not None:
         plot_curves(dataset, framework, metric, task, args.model_plot, dynedge=dynedge, lr=lr, wd=wd, patience=patience, seed=seed, exp_name=exp_name)
     else:
-        valset, testset = parse_logs(dataset, framework, metric, task, model_names, dynedge=dynedge, lr=lr, wd=wd, patience=patience, seed=seed, exp_name=exp_name)
+        valset, testset, memories, timecosts = parse_logs(dataset, framework, metric, task, model_names, dynedge=dynedge, lr=lr, wd=wd, patience=patience, seed=seed, exp_name=exp_name)
         print(f"{metric} of {framework} task on {dataset}")
         for method in model_names:
             print(f'{method}')
@@ -253,3 +313,26 @@ if __name__ == '__main__':
                 std = np.std(testset[method])
 
                 print(f'{mean * 100:.4f}\u00B1{std * 100:.4f}')
+
+
+        print('Memory')
+        for method in model_names:
+            if method not in memories:
+                mean, std = None, None
+                print(f'{mean}\u00B1{std}')
+            else:
+                mean = np.mean(memories[method])
+                std = np.std(memories[method])
+
+                print(f'{mean:.4f}\u00B1{std:.4f}')
+
+        print('Time')
+        for method in model_names:
+            if method not in timecosts:
+                mean, std = None, None
+                print(f'{mean}\u00B1{std}')
+            else:
+                mean = np.mean(timecosts[method])
+                std = np.std(timecosts[method])
+
+                print(f'{mean:.4f}\u00B1{std:.4f}')

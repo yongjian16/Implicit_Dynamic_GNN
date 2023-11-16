@@ -114,8 +114,6 @@ def main(*ARGS):
     # arguments for IDGNN
     args.kappa = 1.0
     args.phi = torch.nn.ReLU()
-    args.multi_z = True
-    args.multi_x = False
     args.regression = False
     args.theta = 0.5 
     args.eta_1 = 1.0

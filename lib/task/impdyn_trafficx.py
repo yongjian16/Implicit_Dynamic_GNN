@@ -62,7 +62,7 @@ class ImpTrafficCross(DynamicGraph):
             resetted = resetted + self.mlp.reset(rng)
         return resetted
 
-    def forward(
+    def forward_old(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
@@ -70,6 +70,8 @@ class ImpTrafficCross(DynamicGraph):
         node_labels: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         /,
+        Z = None,
+        A_rho = None,
     ) -> List[torch.Tensor]:
         R"""
         Forward.
@@ -90,7 +92,7 @@ class ImpTrafficCross(DynamicGraph):
         node_embeds = (
             self.tgnn.forward(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks,
+                node_times, node_masks, Z=Z, A_rho=A_rho,
             )
         )
         if len(self.notembedon) == 0:
@@ -98,7 +100,7 @@ class ImpTrafficCross(DynamicGraph):
             predictions = self.mlp(self.activate(node_embeds))
         return [node_embeds], predictions
 
-    def forward_batch(
+    def forward(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
@@ -126,7 +128,7 @@ class ImpTrafficCross(DynamicGraph):
 
         #
         node_embeds = (
-            self.tgnn.forward_batch(
+            self.tgnn.forward(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
                 node_times, node_masks, Z=Z, A_rho=A_rho,
             )
@@ -138,7 +140,7 @@ class ImpTrafficCross(DynamicGraph):
             predictions = node_embeds
         return [node_embeds], predictions
     
-    def predict(
+    def predict_old(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
@@ -147,7 +149,6 @@ class ImpTrafficCross(DynamicGraph):
         node_masks: torch.Tensor,
         Z = None,
         A_rho = None,
-        A_list = None,
         /,
     ) -> List[torch.Tensor]:
         R"""
@@ -169,7 +170,7 @@ class ImpTrafficCross(DynamicGraph):
         node_embeds = (
             self.tgnn.predict(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
+                node_times, node_masks, Z=Z,
             )
         )
         if len(self.notembedon) == 0:
@@ -180,7 +181,7 @@ class ImpTrafficCross(DynamicGraph):
 
         return predictions
     
-    def predict_batch(
+    def predict(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
@@ -188,8 +189,6 @@ class ImpTrafficCross(DynamicGraph):
         node_labels: torch.Tensor, node_times: torch.Tensor,
         node_masks: torch.Tensor,
         Z = None,
-        A_rho = None,
-        A_list = None,
         /,
     ) -> List[torch.Tensor]:
         R"""
@@ -209,9 +208,9 @@ class ImpTrafficCross(DynamicGraph):
 
         #
         node_embeds = (
-            self.tgnn.predict_batch(
+            self.tgnn.predict(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
+                node_times, node_masks, Z=Z,
             )
         )
         if len(self.notembedon) == 0:
@@ -260,7 +259,7 @@ class ImpTrafficCross(DynamicGraph):
                 (len(node_target_feats), self.target_feat_size),
             )[node_exists]
         )
-        # return mse_loss(node_output_feats, node_target_feats)
+        
         upper_loss = (
             mse_loss(node_output_feats, node_target_feats)
         )
@@ -268,19 +267,16 @@ class ImpTrafficCross(DynamicGraph):
 
         lower_loss = ((Z_1.reshape(-1)-Z.reshape(-1))**2).sum()
         org_shape = Z_0.shape
-        # Z_0, Z_1, V_0 - torch.Size([4, 2064])
-        # Z - torch.Size([516, 16])
         z_grad = torch.autograd.grad(upper_loss, Z_1, retain_graph=True)[0]    
-        # z_grad - torch.Size([4, 2064])
+
         Z_0 = (1 - eta_1)*Z_0 + eta_1*Z.reshape(*org_shape).detach().cpu()
         g_z_grad = torch.autograd.grad(lower_loss, Z_1, retain_graph=True, create_graph=True)[0]
-        # g_z_grad.shape: torch.Size([4, 2064])
-        # hv = torch.inner(g_z_grad,V_0.to(device))
-        hv = torch.sum(g_z_grad*V_0.to(device), dim=-1) # torch.Size([4])
+
+        hv = torch.sum(g_z_grad*V_0.to(device), dim=-1)
 
         phi_v = torch.autograd.grad(hv.sum(), Z_1, retain_graph=True)[0]
         V_0 = V_0 - eta_2*phi_v.cpu() + eta_2*z_grad.cpu()
-        # loss = upper_loss - torch.inner(g_z_grad,V_0.to(device))
+
         loss = upper_loss - torch.sum(g_z_grad*V_0.to(device))
         return loss, Z_0, V_0
 

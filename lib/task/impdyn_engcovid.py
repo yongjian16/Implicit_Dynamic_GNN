@@ -77,6 +77,68 @@ class ImpDynModelReg(DynamicGraph):
             resetted = resetted + self.mlp.reset(rng)
         return resetted
 
+    def forward_old(
+        self,
+        edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
+        edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
+        edge_times: torch.Tensor, node_feats: torch.Tensor,
+        node_labels: torch.Tensor, node_times: torch.Tensor,
+        node_masks: torch.Tensor,
+        /,
+        Z = None,
+        A_rho = None,
+    ) -> List[torch.Tensor]:
+        R"""
+        Forward.
+        """
+        #
+        node_embeds: torch.Tensor
+
+        # We do not have node label emebdding layers.
+        if node_labels.ndim > 0:
+            # UNEXPECT:
+            # Current tasks does not assume any node label input
+            # embeddings.
+            raise NotImplementedError("Node label input is not supported.")
+
+        #
+        if len(self.notembedon) == 0 and len(self.edge_label_embeds) > 0:
+            #
+            if edge_labels.shape[1] != len(self.edge_label_embeds):
+                # UNEXPECT:
+                # Embedding layers should one-to-one match with labels.
+                raise NotImplementedError(
+                    "Edge labels do not match with edge embedding layers",
+                )
+            edge_embeds_buf = (
+                [
+                    self.edge_label_embeds[i].forward(edge_labels[:, 0])
+                    for i in range(len(self.edge_label_embeds))
+                ]
+            )
+            edge_embeds = torch.cat(edge_embeds_buf, dim=1)
+            edge_feats = torch.cat((edge_embeds, edge_feats), dim=1)
+
+        # Edge timestamp reshaping is ignored.
+        if edge_feats.ndim > 2:
+            #
+            edge_feats = torch.permute(edge_feats, (2, 0, 1))
+
+        #
+        node_embeds = (
+            self.tgnn.forward(
+                edge_tuples, edge_feats, edge_ranges, edge_times,
+                node_feats, node_times, node_masks, Z=Z, A_rho=A_rho,
+            )
+        )
+        if len(self.notembedon) == 0:
+            #
+            predictions = self.mlp(self.activate(node_embeds))
+        else:
+            predictions = node_embeds
+        return [node_embeds], predictions
+
+
     def forward(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
@@ -139,7 +201,8 @@ class ImpDynModelReg(DynamicGraph):
         return [node_embeds], predictions
 
 
-    def forward_batch(
+
+    def predict_old(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
         edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
@@ -149,6 +212,7 @@ class ImpDynModelReg(DynamicGraph):
         /,
         Z = None,
         A_rho = None,
+        A_list = None,
     ) -> List[torch.Tensor]:
         R"""
         Forward.
@@ -156,6 +220,7 @@ class ImpDynModelReg(DynamicGraph):
         #
         node_embeds: torch.Tensor
 
+        # We do not have label emebdding layers.
         # We do not have node label emebdding layers.
         if node_labels.ndim > 0:
             # UNEXPECT:
@@ -188,9 +253,9 @@ class ImpDynModelReg(DynamicGraph):
 
         #
         node_embeds = (
-            self.tgnn.forward_batch(
-                edge_tuples, edge_feats, edge_ranges, edge_times,
-                node_feats, node_times, node_masks, Z=Z, A_rho=A_rho,
+            self.tgnn.predict(
+                edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
+                node_times, node_masks, Z=Z,
             )
         )
         if len(self.notembedon) == 0:
@@ -198,10 +263,9 @@ class ImpDynModelReg(DynamicGraph):
             predictions = self.mlp(self.activate(node_embeds))
         else:
             predictions = node_embeds
-        return [node_embeds], predictions
-
-
-
+            
+        return predictions
+    
     def predict(
         self,
         edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
@@ -255,71 +319,7 @@ class ImpDynModelReg(DynamicGraph):
         node_embeds = (
             self.tgnn.predict(
                 edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
-            )
-        )
-        if len(self.notembedon) == 0:
-            #
-            predictions = self.mlp(self.activate(node_embeds))
-        else:
-            predictions = node_embeds
-            
-        return predictions
-    
-    def predict_batch(
-        self,
-        edge_tuples: torch.Tensor, edge_feats: torch.Tensor,
-        edge_labels: torch.Tensor, edge_ranges: torch.Tensor,
-        edge_times: torch.Tensor, node_feats: torch.Tensor,
-        node_labels: torch.Tensor, node_times: torch.Tensor,
-        node_masks: torch.Tensor,
-        /,
-        Z = None,
-        A_rho = None,
-        A_list = None,
-    ) -> List[torch.Tensor]:
-        R"""
-        Forward.
-        """
-        #
-        node_embeds: torch.Tensor
-
-        # We do not have label emebdding layers.
-        # We do not have node label emebdding layers.
-        if node_labels.ndim > 0:
-            # UNEXPECT:
-            # Current tasks does not assume any node label input
-            # embeddings.
-            raise NotImplementedError("Node label input is not supported.")
-
-        #
-        if len(self.notembedon) == 0 and len(self.edge_label_embeds) > 0:
-            #
-            if edge_labels.shape[1] != len(self.edge_label_embeds):
-                # UNEXPECT:
-                # Embedding layers should one-to-one match with labels.
-                raise NotImplementedError(
-                    "Edge labels do not match with edge embedding layers",
-                )
-            edge_embeds_buf = (
-                [
-                    self.edge_label_embeds[i].forward(edge_labels[:, 0])
-                    for i in range(len(self.edge_label_embeds))
-                ]
-            )
-            edge_embeds = torch.cat(edge_embeds_buf, dim=1)
-            edge_feats = torch.cat((edge_embeds, edge_feats), dim=1)
-
-        # Edge timestamp reshaping is ignored.
-        if edge_feats.ndim > 2:
-            #
-            edge_feats = torch.permute(edge_feats, (2, 0, 1))
-
-        #
-        node_embeds = (
-            self.tgnn.predict_batch(
-                edge_tuples, edge_feats, edge_ranges, edge_times, node_feats,
-                node_times, node_masks, Z=Z, A_rho=A_rho, A_list=A_list,
+                node_times, node_masks, Z=Z,
             )
         )
         if len(self.notembedon) == 0:
@@ -374,19 +374,16 @@ class ImpDynModelReg(DynamicGraph):
         device = Z.device
         lower_loss = ((Z_1.reshape(-1)-Z.reshape(-1))**2).sum()
         org_shape = Z_0.shape
-        # Z_0, Z_1, V_0 - torch.Size([4, 2064])
-        # Z - torch.Size([516, 16])
         z_grad = torch.autograd.grad(upper_loss, Z_1, retain_graph=True)[0]    
-        # z_grad - torch.Size([4, 2064])
+
         Z_0 = (1 - eta_1)*Z_0 + eta_1*Z.reshape(*org_shape).detach().cpu()
         g_z_grad = torch.autograd.grad(lower_loss, Z_1, retain_graph=True, create_graph=True)[0]
-        # g_z_grad.shape: torch.Size([4, 2064])
-        # hv = torch.inner(g_z_grad,V_0.to(device))
-        hv = torch.sum(g_z_grad*V_0.to(device), dim=-1) # torch.Size([4])
+
+        hv = torch.sum(g_z_grad*V_0.to(device), dim=-1)
 
         phi_v = torch.autograd.grad(hv.sum(), Z_1, retain_graph=True)[0]
         V_0 = V_0 - eta_2*phi_v.cpu() + eta_2*z_grad.cpu()
-        # loss = upper_loss - torch.inner(g_z_grad,V_0.to(device))
+
         loss = upper_loss - torch.sum(g_z_grad*V_0.to(device))
         return loss, Z_0, V_0
 

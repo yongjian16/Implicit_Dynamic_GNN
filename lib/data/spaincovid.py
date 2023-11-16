@@ -87,7 +87,6 @@ class SpainCOVID(object):
 
         # Timestamp is day.
         self.timestamps = onp.arange(len(self.raw_nodes), dtype=onp.float64)
-        import pdb;pdb.set_trace()
         
     def sanitize_edge(self, /) -> None:
         R"""

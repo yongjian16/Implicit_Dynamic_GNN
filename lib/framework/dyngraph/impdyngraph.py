@@ -20,7 +20,6 @@ from ..transfer import transfer
 from ...meta.batch import batchize, batchize2
 from ...model.utils import get_spectral_rad, aug_normalized_adjacency, sparse_mx_to_torch_sparse_tensor
 from scipy.sparse import coo_matrix
-from torch_sparse import SparseTensor
 
 class FrameworkImplicitDynamicGraph(
     FrameworkIndexable[
@@ -42,14 +41,8 @@ class FrameworkImplicitDynamicGraph(
                          device=device, metaspindle=metaspindle, 
                          gradclip=gradclip)
         
-        # Bilevel optimization
-        # if hasattr(self.metaset, 'A_rho'):
-        #     A_rho = self.metaset.A_rho
-        #     A_list = self.metaset.A_list
-        # else:
-
         N = self.metaset.num_nodes
-
+        # Getting A_rho
         if isinstance(self.metaset, DynamicAdjacencyListDynamicEdge):
             adjs = [coo_matrix((edge_feats.squeeze(), (edge_srcs, edge_dsts)), shape=(N,N))
                     for edge_feats, edge_srcs, edge_dsts in zip(self.metaset.edge_feats, 
@@ -58,40 +51,22 @@ class FrameworkImplicitDynamicGraph(
             
             adjs2 = [aug_normalized_adjacency(adj) for adj in adjs]
             A_list = [sparse_mx_to_torch_sparse_tensor(adj) for adj in adjs2]
-
-            # A_list = [coo_array((edge_feats.squeeze(), (edge_srcs, edge_dsts)), shape=(N,N))
-            #             for edge_feats, edge_srcs, edge_dsts in zip(self.metaset.edge_feats, 
-            #                                                         self.metaset.edge_srcs, 
-            #                                                         self.metaset.edge_dsts)]
-            # A_list = [torch.sparse.FloatTensor(torch.LongTensor(onp.vstack((adj.row, adj.col))), 
-            #                                    torch.FloatTensor(adj.data), torch.Size(adj.shape))
-            #                                    .to(device) for adj in A_list]
-
             A_rho = [get_spectral_rad(A) for A in A_list]
-            # A_list = [sparse_mx_to_torch_sparse_tensor(adj) for adj in adjs]
-
-            # A_list = [A.to(device) for A in A_list]
-            # A_list = [SparseTensor.from_torch_sparse_coo_tensor(A) for A in A_list]
         elif isinstance(self.metaset, DynamicAdjacencyListStaticEdge):
             adj = aug_normalized_adjacency(coo_matrix((self.metaset.edge_feats.squeeze(), 
                         (self.metaset.edge_srcs, 
                          self.metaset.edge_dsts)), shape=(N,N)))
             A = sparse_mx_to_torch_sparse_tensor(adj)
-            A_rho = [get_spectral_rad(A)] * self.metaset.num_times
-            
+            A_rho = [get_spectral_rad(A)] * self.metaset.num_times   
         self.A_rho = A_rho
-        # self.A_list = A_list
-
+        #
         self.Z_all = [torch.rand(self.neuralnet.tgnn.embed_inside_size * 
                                 self.metaset.num_nodes)] * self.metaset.num_windows
         self.V_all = [torch.zeros(self.neuralnet.tgnn.embed_inside_size *
                             self.metaset.num_nodes)] * self.metaset.num_windows
-        
+        #
         self.eta_1 = eta_1
         self.eta_2 = eta_2
-
-        # for testing only
-        # self.predictions = dict()
 
     def nodesplit_masks(
         self,
@@ -204,8 +179,8 @@ class FrameworkImplicitDynamicGraph(
         cnt = 0
         
         # assert meta_batch_size == 1, "haven't implemented batch size > 1"
-
         for batch in xitertools.chunked(batch_indices, meta_batch_size):
+
             # Batchize only nodes of batch graphs.
             elapsed = time.time()
             memory_node_numpy = (
@@ -235,39 +210,27 @@ class FrameworkImplicitDynamicGraph(
 
             # Forward.
             elapsed = time.time()
-            if meta_batch_size == 1:
-                Z_0 = self.Z_all[batch[0]]
-                V_0 = self.V_all[batch[0]]
-                (input_begin, input_end, _, _) = self.metaset.idx_to_timesteps(batch[0])
-                A_rho = self.A_rho[input_begin:input_end]
-                # A_list = self.A_list[input_begin:input_end]
-                
-                Z_1 = Z_0.to(self.device).requires_grad_(True)
-                Z_temp = Z_1.view(self.metaset.num_nodes, self.neuralnet.tgnn.embed_inside_size)
-                embeddings, predictions = self.neuralnet.forward(*memory_input_ondev, Z=Z_temp, A_rho=A_rho)
-                # self.predictions[batch[0]] = predictions
-            else:
-                assert len(batch) == meta_batch_size, "Have not implemented padded batch"
 
-                A_rho_list = []
-                Z_0_list = []
-                V_0_list = []
-                for idx in xitertools.padded(batch, meta_index_pad, meta_batch_size):
-                    (input_begin, input_end, _, _) = self.metaset.idx_to_timesteps(idx)
-                    A_rho_i = torch.tensor(self.A_rho[input_begin:input_end])
-                    A_rho_list.append(A_rho_i)    
-                    Z_0_i = self.Z_all[idx]
-                    Z_0_list.append(Z_0_i)
-                    V_0_i = self.V_all[idx]
-                    V_0_list.append(V_0_i)
+            A_rho_list = []
+            Z_0_list = []
+            V_0_list = []
+            for idx in xitertools.padded(batch, meta_index_pad, meta_batch_size):
+                (input_begin, input_end, _, _) = self.metaset.idx_to_timesteps(idx)
+                A_rho_i = self.A_rho[input_begin:input_end]
+                A_rho_list.append(A_rho_i)    
+                Z_0_i = self.Z_all[idx]
+                Z_0_list.append(Z_0_i)
+                V_0_i = self.V_all[idx]
+                V_0_list.append(V_0_i)
 
-                A_rho = torch.stack(A_rho_list)
-                Z_0 = torch.stack(Z_0_list)    
-                V_0 = torch.stack(V_0_list)
-                Z_1 = Z_0.to(self.device).requires_grad_(True)
-                Z_temp = Z_1.view(meta_batch_size * self.metaset.num_nodes, 
-                                  self.neuralnet.tgnn.embed_inside_size)
-                (embeddings, predictions) = self.neuralnet.forward_batch(*memory_input_ondev, Z=Z_temp, A_rho=self.A_rho)
+            A_rho = onp.stack(A_rho_list)
+            Z_0 = torch.stack(Z_0_list)    
+            V_0 = torch.stack(V_0_list)
+            Z_1 = Z_0.to(self.device).requires_grad_(True)
+            Z_temp = Z_1.view(meta_batch_size * self.metaset.num_nodes, 
+                                self.neuralnet.tgnn.embed_inside_size)
+            (embeddings, predictions) = self.neuralnet.forward(*memory_input_ondev, 
+                                                                     Z=Z_temp, A_rho=A_rho)
 
             cast(List[float], timeparts["forward"]).append(
                 time.time() - elapsed,
@@ -280,20 +243,17 @@ class FrameworkImplicitDynamicGraph(
                 #
                 self.optim.zero_grad()
                 loss, Z_0, V_0 = self.neuralnet.sidestep(
-                    predictions, *memory_target_ondev, *embeddings, Z_1, Z_0, V_0, self.eta_1, self.eta_2
+                    predictions, *memory_target_ondev, *embeddings, 
+                    Z_1, Z_0, V_0, self.eta_1, self.eta_2
                 )
                 self.gradclip(self.neuralnet, 1.0)
                 self.optim.step()
                 avg_loss += loss.item()
                 cnt += 1
                 #
-                if meta_batch_size == 1:
-                    self.Z_all[batch[0]] = Z_0
-                    self.V_all[batch[0]] = V_0
-                else:
-                    for bidx, idx in enumerate(batch):
-                        self.Z_all[idx] = Z_0[bidx]
-                        self.V_all[idx] = V_0[bidx]
+                for bidx, idx in enumerate(batch):
+                    self.Z_all[idx] = Z_0[bidx]
+                    self.V_all[idx] = V_0[bidx]
                     
             cast(List[float], timeparts["backward"]).append(
                 time.time() - elapsed,
@@ -377,20 +337,9 @@ class FrameworkImplicitDynamicGraph(
 
             # Forward.
             elapsed = time.time()
-            # if self.metaspindle == 'time':
-            # Z_1 = self.Z_all[batch[0]].to(self.device).requires_grad_(True)
-            # Z_temp = Z_1.view(self.metaset.num_nodes, self.neuralnet.tgnn.embed_inside_size)
-            # (input_begin, input_end, target_begin, target_end) = self.metaset.idx_to_timesteps(batch[0])
-            # A_rho = self.A_rho[input_begin:input_end]
-            # A_list = self.A_list[input_begin:input_end]
-            # if batch[0] in self.predictions:
-            #     predictions = self.predictions[batch[0]]
-            # else:
-            if meta_batch_size == 1:
-                predictions = self.neuralnet.predict(*memory_input_ondev)
-            else:
-                predictions = self.neuralnet.predict_batch(*memory_input_ondev)
-            
+
+            predictions = self.neuralnet.predict(*memory_input_ondev)
+
             cast(List[float], timeparts["forward"]).append(
                 time.time() - elapsed,
             )
