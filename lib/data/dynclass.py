@@ -11,6 +11,8 @@ import collections
 import pickle
 from ..model.utils import get_spectral_rad, aug_normalized_adjacency, sparse_mx_to_torch_sparse_tensor
 from scipy.sparse import coo_array, coo_matrix
+import benchtemp as bt
+
 
 class DynamicClassification(object):
     R"""
@@ -574,3 +576,51 @@ class UIHC(DynamicClassification):
 
         return metaset
     
+
+
+class TgbnGenre(DynamicClassification):
+
+    SOURCE = "tgbn-genre"
+
+    def from_raw(self, dirname: str, /) -> None:
+        R"""
+        Load from raw data.
+        """
+        #
+        # num_times, num_nodes, num_node_attrs = self.get_general_info(dirname)
+        # num_labels = 2
+
+        # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
+        data = bt.nc.DataLoader(dataset_path="./src/benchtemp_datasets/", dataset_name='mooc')
+
+        # dataloader for dynamic node  classification task
+
+        full_data, node_features, edge_features, train_data, val_data, test_data = data.load()
+        import pdb;pdb.set_trace()
+        
+        #
+        self.raw_node_feats = node_features # static
+        self.raw_node_labels = full_data.labels # 1: 4066, 0:407683
+        
+        self.num_labels = len(set(self.raw_node_labels))
+        self.label_counts = [sum(self.raw_node_labels == i) for i in range(self.num_labels)]
+        lb_cnts = onp.array(self.label_counts)
+        print(f'label counts: {self.label_counts} ({[f"{v:.2f}%" for v in lb_cnts / lb_cnts.sum()]})')
+        #
+        self.raw_edge_srcs = []
+        self.raw_edge_dsts = []
+        self.raw_edge_feats = []
+        (_, self.num_times, _) = feats.shape
+
+        for t in range(self.num_times):
+            #
+            (dsts, srcs) = onp.nonzero(adjmats[t])
+            weights = adjmats[t, dsts, srcs].astype(float)
+            if onp.any(weights != 1):
+                # UNEXPECT:
+                # Node label must be unique.
+                raise NotImplementedError("Edge has non-0/1 weight.")
+            self.raw_edge_srcs.append(srcs)
+            self.raw_edge_dsts.append(dsts)
+            self.raw_edge_feats.append(weights)
+        self.timestamps = onp.arange(self.num_times, dtype=onp.float64)
