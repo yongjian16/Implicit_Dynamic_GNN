@@ -146,7 +146,7 @@ def main(*ARGS):
     window_future_size = {
         "Brain10": 0, "DynCSL": 0, "Reddit4": 0,
         "IMDB": 0, "UIHC": 1, "DBLP5": 0,
-        "MOOC": 0, "SFHH": 0
+        "MOOC": 0, "SFHH": 1
     }[source]
 
     spindle = {"transductive": "node", "inductive": "time"}[frame]
