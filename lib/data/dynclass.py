@@ -12,6 +12,7 @@ import pickle
 from ..model.utils import get_spectral_rad, aug_normalized_adjacency, sparse_mx_to_torch_sparse_tensor
 from scipy.sparse import coo_array, coo_matrix
 import benchtemp as bt
+import networkx as nx
 
 
 class DynamicClassification(object):
@@ -624,3 +625,243 @@ class TgbnGenre(DynamicClassification):
             self.raw_edge_dsts.append(dsts)
             self.raw_edge_feats.append(weights)
         self.timestamps = onp.arange(self.num_times, dtype=onp.float64)
+
+
+class MOOC(DynamicClassification):
+
+    SOURCE = "mooc"
+
+    def from_raw(self, dirname: str, /) -> None:
+        R"""
+        Load from raw data.
+        """
+        #
+        # num_times, num_nodes, num_node_attrs = self.get_general_info(dirname)
+        # num_labels = 2
+
+        # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
+        data = bt.nc.DataLoader(dataset_path="./src/benchtemp_datasets/", dataset_name='wikipedia')
+
+        # dataloader for dynamic node  classification task
+
+        full_data, node_features, edge_features, train_data, val_data, test_data = data.load()        
+        #
+        self.raw_node_feats = node_features # static
+        self.raw_edge_labels = full_data.labels # 1: 4066, 0:407683
+        
+        # self.num_labels = len(set(self.raw_node_labels))
+        # self.label_counts = [sum(self.raw_node_labels == i) for i in range(self.num_labels)]
+        # lb_cnts = onp.array(self.label_counts)
+        # print(f'label counts: {self.label_counts} ({[f"{v:.2f}%" for v in lb_cnts / lb_cnts.sum()]})')
+        #
+        self.raw_edge_srcs = []
+        self.raw_edge_dsts = []
+        self.raw_edge_feats = []
+        self.raw_node_labels = [] 
+    
+        self.num_times = 200 # TODO
+
+        start_time = min(full_data.timestamps)
+        end_time = max(full_data.timestamps)
+        bin_edges = onp.linspace(start_time, end_time, self.num_times+1, endpoint=True)
+
+        import pdb;pdb.set_trace()
+
+        for t in range(self.num_times):
+            snapshot_start = bin_edges[t]
+            snapshot_end = bin_edges[t + 1]
+            snapshot_mask = (full_data.timestamps >= snapshot_start) & (full_data.timestamps <= snapshot_end)
+            #
+            snapshot_src = full_data.sources[snapshot_mask]
+            snapshot_dst = full_data.destinations[snapshot_mask]
+            snapshot_edge_feats = edge_features[snapshot_mask]
+            self.raw_edge_srcs.append(snapshot_src)
+            self.raw_edge_dsts.append(snapshot_dst)
+            self.raw_edge_feats.append(snapshot_edge_feats)
+
+        self.timestamps = onp.arange(self.num_times, dtype=onp.float64)
+
+    def asto_dynamic_adjacency_list_dynamic_edge(
+        self,
+        /,
+        *,
+        window_history_size: Optional[int], window_future_size: int,
+        win_aggr: str, timestamped_edge_times: List[str],
+        timestamped_node_times: List[str], timestamped_edge_feats: List[str],
+        timestamped_node_feats: List[str],
+    ) -> DynamicAdjacencyListDynamicEdge:
+        R"""
+        Transform dataset as temporal adjacency list (static edge) metaset.
+        """
+        #
+        node_feats = onp.transpose(self.raw_node_feats, (0, 2, 1))
+        num_nodes = len(node_feats)
+        node_labels = onp.reshape(self.raw_node_labels, (num_nodes, 1))
+
+        #
+        edge_feats = []
+        edge_labels = []
+        for t in range(self.num_times):
+            #
+            num_edges = len(self.edge_feats[t])
+            edge_feats.append(onp.reshape(self.edge_feats[t], (num_edges, 1)))
+            edge_labels.append(
+                cast(
+                    onpt.NDArray[onp.generic],
+                    onp.zeros((num_edges, 1)).astype(onp.int64),
+                ),
+            )
+
+        #
+        metaset = (
+            DynamicAdjacencyListDynamicEdge(
+                self.edge_srcs, self.edge_dsts, edge_feats, edge_labels,
+                node_feats, node_labels,
+                hetero=self.edge_hetero, symmetrize=self.edge_symmetric,
+                sort=True,
+            )
+        )
+        metaset.dynamicon(dyn_node_feats=True, dyn_node_labels=False)
+        metaset.timestamping(
+            self.timestamps,
+            timestamped_edge_times=timestamped_edge_times,
+            timestamped_node_times=timestamped_node_times,
+            timestamped_edge_feats=timestamped_edge_feats,
+            timestamped_node_feats=timestamped_node_feats,
+        )
+        metaset.sliding_window(
+            window_history_size=window_history_size,
+            window_future_size=window_future_size,
+        )
+        metaset.sliding_aggregation(win_aggr=win_aggr)
+        # customized info
+        if hasattr(self, 'lab_avail_nodes'):
+            metaset.lab_avail_nodes = self.lab_avail_nodes
+        else:
+            metaset.lab_avail_nodes = None
+
+        if hasattr(self, 'A_rho'):
+            metaset.A_rho = self.A_rho
+            metaset.A_list = self.A_list
+        return metaset
+    
+
+from check_data import extract_info
+
+class SFHH(DynamicClassification):
+
+    SOURCE = "SFHH"
+
+    def from_raw(self, dirname: str, /) -> None:
+        R"""
+        Load from raw data.
+        """
+        #
+        # num_times, num_nodes, num_node_attrs = self.get_general_info(dirname)
+        # num_labels = 2
+
+        # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
+        node_idx_mapping, graphs, label_matrix = extract_info(self.SOURCE)
+        # create one-hot encoding for node_features
+        node_features = onp.zeros((len(node_idx_mapping), len(node_idx_mapping)))
+        for i in range(len(node_idx_mapping)):
+            node_features[i, i] = 1
+        # add all the nodes that are not in the graph
+        for graph in graphs:
+            graph.add_nodes_from(list(set(node_idx_mapping.values()) - set(graph.nodes())))
+
+        self.num_times = len(graphs)
+        self.num_nodes = len(node_idx_mapping)
+        self.raw_node_feats = node_features # static
+        # make unkwown labels -1 to 0 as susceptible
+        label_matrix[label_matrix == -1] = 0
+        label_matrix = label_matrix.astype(int)[..., None]
+        assert label_matrix.shape == (self.num_times, self.num_nodes, 1)
+        self.raw_node_labels = label_matrix # num_timesteps, num_nodes {0, 1, 2}
+        
+        self.num_labels = 3
+        # self.label_counts = [sum(self.raw_node_labels == i) for i in range(self.num_labels)]
+        # lb_cnts = onp.array(self.label_counts)
+        # print(f'label counts: {self.label_counts} ({[f"{v:.2f}%" for v in lb_cnts / lb_cnts.sum()]})')
+        #
+        self.raw_edge_srcs = []
+        self.raw_edge_dsts = []
+        self.raw_edge_feats = []
+    
+        for t in range(self.num_times):
+            graph = graphs[t]
+            adj_mat = nx.adjacency_matrix(graph).todense()
+            #
+            (dsts, srcs) = onp.nonzero(adj_mat)
+            weights = adj_mat[dsts, srcs].astype(float)
+            self.raw_edge_srcs.append(srcs)
+            self.raw_edge_dsts.append(dsts)
+            self.raw_edge_feats.append(weights)
+            
+        self.timestamps = onp.arange(self.num_times, dtype=onp.float64)
+
+    def asto_dynamic_adjacency_list_dynamic_edge(
+        self,
+        /,
+        *,
+        window_history_size: Optional[int], window_future_size: int,
+        win_aggr: str, timestamped_edge_times: List[str],
+        timestamped_node_times: List[str], timestamped_edge_feats: List[str],
+        timestamped_node_feats: List[str],
+    ) -> DynamicAdjacencyListDynamicEdge:
+        R"""
+        Transform dataset as temporal adjacency list (static edge) metaset.
+        """
+        #
+        # node_feats = onp.transpose(self.raw_node_feats, (0, 2, 1))
+        # num_nodes = len(node_feats)
+        node_feats = self.raw_node_feats[..., None].repeat(self.num_times, axis=-1)
+        node_labels = onp.transpose(self.raw_node_labels, (1, 2, 0)) # (num_nodes, num_feats, num_times)
+
+        #
+        edge_feats = []
+        edge_labels = []
+        for t in range(self.num_times):
+            #
+            num_edges = len(self.edge_feats[t])
+            edge_feats.append(onp.reshape(self.edge_feats[t], (num_edges, 1)))
+            edge_labels.append(
+                cast(
+                    onpt.NDArray[onp.generic],
+                    onp.zeros((num_edges, 1)).astype(onp.int64),
+                ),
+            )
+
+        #
+        metaset = (
+            DynamicAdjacencyListDynamicEdge(
+                self.edge_srcs, self.edge_dsts, edge_feats, edge_labels,
+                node_feats, node_labels,
+                hetero=self.edge_hetero, symmetrize=self.edge_symmetric,
+                sort=True,
+            )
+        )
+        metaset.dynamicon(dyn_node_feats=True, dyn_node_labels=True)
+        metaset.timestamping(
+            self.timestamps,
+            timestamped_edge_times=timestamped_edge_times,
+            timestamped_node_times=timestamped_node_times,
+            timestamped_edge_feats=timestamped_edge_feats,
+            timestamped_node_feats=timestamped_node_feats,
+        )
+        metaset.sliding_window(
+            window_history_size=window_history_size,
+            window_future_size=window_future_size,
+        )
+        metaset.sliding_aggregation(win_aggr=win_aggr)
+        # customized info
+        if hasattr(self, 'lab_avail_nodes'):
+            metaset.lab_avail_nodes = self.lab_avail_nodes
+        else:
+            metaset.lab_avail_nodes = None
+
+        if hasattr(self, 'A_rho'):
+            metaset.A_rho = self.A_rho
+            metaset.A_list = self.A_list
+
+        return metaset
