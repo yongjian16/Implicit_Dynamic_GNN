@@ -12,6 +12,7 @@ import dynetx as dn
 from ndlib.viz.mpl.DiffusionTrend import DiffusionTrend
 from tqdm import tqdm
 import copy
+import os
 
 def create_graph(data, window_size=600):
     # create a list of graphs
@@ -160,40 +161,82 @@ def convert_file_to_dynetx_format(path, newpath):
 
 def extract_info(data_name):
     SEED = 2024
+    cache_path = 'src/co-presence/co-presence/{}.cache'.format(data_name)
     #
-    if data_name == 'SFHH':
-        data = load_sfhh()
-    elif data_name == 'LH10':
-        data = load_hospital()
-    elif data_name == 'InVS15':
-        data = load_invs15()
+    if os.path.exists(cache_path):
+        print('loading from cache: {}'.format(cache_path))
+        with open(cache_path, 'rb') as f:
+            node_idx_mapping, graphs, label_matrix = pickle.load(f)
+    else:
+        if data_name == 'SFHH':
+            data = load_sfhh()
+        elif data_name == 'LH10':
+            data = load_hospital()
+        elif data_name == 'InVS15':
+            data = load_invs15()
 
-    
-    node_idx_mapping, graphs = create_graph(data)
-    
-    # convert graph to directed graph
-    # directed_graphs = []    
-    # for graph in graphs:
-    #     directed_graphs.append(graph.to_directed())
+        
+        node_idx_mapping, graphs = create_graph(data)
+        
+        # convert graph to directed graph
+        # directed_graphs = []    
+        # for graph in graphs:
+        #     directed_graphs.append(graph.to_directed())
 
-    dynGraph = dn.DynGraph(edge_removal=False)
-    for t, graph in enumerate(graphs):
-        dynGraph.add_interactions_from(graph.edges(data=True), t=t)
+        dynGraph = dn.DynGraph(edge_removal=False)
+        for t, graph in enumerate(graphs):
+            dynGraph.add_interactions_from(graph.edges(data=True), t=t)
 
-    beta, gamma = (0.25, 0.055)
-    print('beta: {}, gamma: {}'.format(beta, gamma))
-    system_status = run_SIR_simulation(dynGraph, beta=beta, gamma=gamma, seed=SEED)
+        beta, gamma = (0.25, 0.055)
+        print('beta: {}, gamma: {}'.format(beta, gamma))
+        system_status = run_SIR_simulation(dynGraph, beta=beta, gamma=gamma, seed=SEED)
 
-    label_matrix = np.zeros((len(system_status), len(node_idx_mapping))) - 1 # -1 means not active nodes
-    for t, graph in enumerate(graphs):
-        status = copy.deepcopy(system_status[t-1]['status'])
-        status.update(system_status[t]['status'])
-        system_status[t]['status'] = status
-        for node in graph.nodes():
-            label_matrix[t, int(node)] = status[node]
+        label_matrix = np.zeros((len(system_status), len(node_idx_mapping))) - 1 # -1 means not active nodes
+        for t, graph in enumerate(graphs):
+            status = copy.deepcopy(system_status[t-1]['status'])
+            status.update(system_status[t]['status'])
+            system_status[t]['status'] = status
+            for node in graph.nodes():
+                label_matrix[t, int(node)] = status[node]
+        #
+        with open(cache_path, 'wb') as f:
+            pickle.dump((node_idx_mapping, graphs, label_matrix), f)
 
     return node_idx_mapping, graphs, label_matrix
 
 if __name__ == '__main__':
-    node_idx_mapping, graphs, label_matrix = extract_info('SFHH')
-    import pdb;pdb.set_trace()
+    
+    for data_name in ['SFHH', 'LH10', 'InVS15']:
+        print('data_name: ', data_name)
+        node_idx_mapping, graphs, label_matrix = extract_info(data_name)
+        print('='*20)
+"""
+data_name:  SFHH
+total number of unique nodes: 403
+total number of timestamps: 103
+total number of temporal edges: 441527
+average weight of temporal edges: 3.2104152180953824
+beta: 0.25, gamma: 0.055
+infected node:  [8]
+final t: 102, ps: 0.0, pi: 0.19106699751861042, pr: 0.8089330024813896
+====================
+data_name:  LH10
+line:  150125
+total number of unique nodes: 73
+total number of timestamps: 418
+total number of temporal edges: 21848
+average weight of temporal edges: 6.8713841083852065
+beta: 0.25, gamma: 0.055
+infected node:  [10]
+final t: 417, ps: 0.0410958904109589, pi: 0.1232876712328767, pr: 0.8356164383561644
+====================
+data_name:  InVS15
+line:  1283193
+total number of unique nodes: 219
+total number of timestamps: 700
+total number of temporal edges: 180669
+average weight of temporal edges: 7.1024580863346785
+beta: 0.25, gamma: 0.055
+infected node:  [77]
+final t: 699, ps: 0.0319634703196347, pi: 0.0045662100456621, pr: 0.9634703196347032
+"""

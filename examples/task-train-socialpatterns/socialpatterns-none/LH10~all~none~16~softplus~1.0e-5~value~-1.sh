@@ -6,6 +6,6 @@ seed=$4
 /usr/bin/time -f "Max CPU Memory: %M KB\nElapsed: %e sec" \
 python -u socialpatterns.py \
 --model $model --win-aggr none --source LH10 --target all \
---framework $framework --hidden 16 --activate softplus --epoch 200 \
+--framework $framework --hidden 16 --activate softplus --epoch 100 \
 --lr $lr --weight-decay 1e-5 --clipper value --patience -1 --seed $seed \
 --device cuda --exp-name 'exp1'
