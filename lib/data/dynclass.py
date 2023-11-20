@@ -748,9 +748,9 @@ class MOOC(DynamicClassification):
 
 from check_data import extract_info
 
-class SFHH(DynamicClassification):
+class SocioPatterns(DynamicClassification):
 
-    SOURCE = "SFHH"
+    SOURCE = None
 
     def from_raw(self, dirname: str, /) -> None:
         R"""
@@ -865,3 +865,15 @@ class SFHH(DynamicClassification):
             metaset.A_list = self.A_list
 
         return metaset
+    
+class SFHH(SocioPatterns):
+
+    SOURCE = "SFHH"
+
+class LH10(SocioPatterns):
+
+    SOURCE = "LH10"
+
+class InVS15(SocioPatterns):
+
+    SOURCE = "InVS15"

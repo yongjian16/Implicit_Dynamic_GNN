@@ -82,10 +82,18 @@ def load_hospital():
     print()
     return data
 
+def load_invs15():
+    data = []
+    with open('src/co-presence/co-presence/tij_pres_InVS15.dat', 'r') as f:
+        for idx, line in enumerate(f):
+            print("line: ", idx, end='\r')
+            t, i, j = line.strip().split(' ')
+            data.append((int(t), i, j))
+    print()
+    return data
 
 
-
-def run_SIR_simulation(dynGraph, n_sims=500, beta = 0.25, gamma = 0.055, seed=2023):
+def run_SIR_simulation(dynGraph, n_sims=500, beta = 0.25, gamma = 0.055, seed=2024):
     # run n_sims simulations of SIR model
     # for each set of parameter (β, µ) = {(0.25, 0.055), (0.13, 0.1), (0.13, 0.055), (0.13, 0.01), (0.01, 0.055)}.
     # the simulation is accepted when there is still at least one infectious node when more than half of the total data set time span has elapsed (i.e., |I_{|T|/2}| ≥ 1).
@@ -93,7 +101,8 @@ def run_SIR_simulation(dynGraph, n_sims=500, beta = 0.25, gamma = 0.055, seed=20
     # return the node states at all time steps of the accepted simulations
     #  For each selected simulation, we assign as ground truth label to each active node (i, t_{i,a}) the state of node i at time t_{i,a}.
     # we consider as initial state a single randomly selected node as seed, setting its state as infectious, with all others susceptible. 
-
+    np.random.seed(seed)
+    #
     found_it = True
     for simth in range(n_sims):
         model = dyn.DynSIRModel(dynGraph, seed=seed)
@@ -150,10 +159,15 @@ def convert_file_to_dynetx_format(path, newpath):
                 f.write('{} {} {} {}\n'.format(i, j, '+', t))
 
 def extract_info(data_name):
+    SEED = 2024
+    #
     if data_name == 'SFHH':
         data = load_sfhh()
     elif data_name == 'LH10':
         data = load_hospital()
+    elif data_name == 'InVS15':
+        data = load_invs15()
+
     
     node_idx_mapping, graphs = create_graph(data)
     
@@ -168,7 +182,7 @@ def extract_info(data_name):
 
     beta, gamma = (0.25, 0.055)
     print('beta: {}, gamma: {}'.format(beta, gamma))
-    system_status = run_SIR_simulation(dynGraph, beta=beta, gamma=gamma, seed=2025)
+    system_status = run_SIR_simulation(dynGraph, beta=beta, gamma=gamma, seed=SEED)
 
     label_matrix = np.zeros((len(system_status), len(node_idx_mapping))) - 1 # -1 means not active nodes
     for t, graph in enumerate(graphs):
