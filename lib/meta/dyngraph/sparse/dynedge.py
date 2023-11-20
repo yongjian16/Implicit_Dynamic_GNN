@@ -1229,7 +1229,6 @@ class DynamicAdjacencyListDynamicEdge(DynamicGraph):
                 # Put node axis at first for batching.
                 edge_times_numpy = onp.stack(edge_times_numpy_buf)
                 edge_times_numpy = onp.transpose(edge_times_numpy, (1, 0, 2))
-            import pdb;pdb.set_trace()
         elif self.winaggr == self.WINAGG_NONE:
             # Dynamic graph with dynamic edge has different snapshots with
             # consecutive ranges.

@@ -176,7 +176,6 @@ def batchize2(
             #
             edge_labels_numpy = onp.array(0)
         edge_ranges_numpy = onp.array([[0], [num_edges]])
-        import pdb;pdb.set_trace()
         edge_times_numpy = onp.concatenate(edge_times_buf, axis=0)
     elif edge_ranges_buf[0].ndim == 2:
         # We need to batch sample graphs into a large graph for each step.

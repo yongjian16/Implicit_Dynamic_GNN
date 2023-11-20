@@ -597,7 +597,6 @@ class TgbnGenre(DynamicClassification):
         # dataloader for dynamic node  classification task
 
         full_data, node_features, edge_features, train_data, val_data, test_data = data.load()
-        import pdb;pdb.set_trace()
         
         #
         self.raw_node_feats = node_features # static
@@ -664,8 +663,6 @@ class MOOC(DynamicClassification):
         start_time = min(full_data.timestamps)
         end_time = max(full_data.timestamps)
         bin_edges = onp.linspace(start_time, end_time, self.num_times+1, endpoint=True)
-
-        import pdb;pdb.set_trace()
 
         for t in range(self.num_times):
             snapshot_start = bin_edges[t]
