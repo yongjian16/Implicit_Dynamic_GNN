@@ -13,6 +13,7 @@ from ndlib.viz.mpl.DiffusionTrend import DiffusionTrend
 from tqdm import tqdm
 import copy
 import os
+import matplotlib.pyplot as plt
 
 def create_graph(data, window_size=600):
     # create a list of graphs
@@ -65,17 +66,17 @@ def create_graph(data, window_size=600):
     print('average weight of temporal edges: {}'.format(total_weight / total_edges))
     return node_idx_mapping, graphs
 
-def load_sfhh():
+def load_sfhh(datadir='src/co-presence/'):
     data = []
-    with open('src/co-presence/co-presence/tij_pres_SFHH.dat', 'r') as f:
+    with open(datadir + '/tij_pres_SFHH.dat', 'r') as f:
         for line in f:
             t, i, j = line.strip().split(' ')
             data.append((int(t), i, j))
     return data 
 
-def load_hospital():
+def load_hospital(datadir='src/co-presence/'):
     data = []
-    with open('src/co-presence/co-presence/tij_pres_LH10.dat', 'r') as f:
+    with open(datadir + '/tij_pres_LH10.dat', 'r') as f:
         for idx, line in enumerate(f):
             print("line: ", idx, end='\r')
             t, i, j = line.strip().split(' ')
@@ -83,9 +84,9 @@ def load_hospital():
     print()
     return data
 
-def load_invs15():
+def load_invs15(datadir='src/co-presence/'):
     data = []
-    with open('src/co-presence/co-presence/tij_pres_InVS15.dat', 'r') as f:
+    with open(datadir+'/tij_pres_InVS15.dat', 'r') as f:
         for idx, line in enumerate(f):
             print("line: ", idx, end='\r')
             t, i, j = line.strip().split(' ')
@@ -94,7 +95,7 @@ def load_invs15():
     return data
 
 
-def run_SIR_simulation(dynGraph, n_sims=500, beta = 0.25, gamma = 0.055, seed=2024):
+def run_SIR_simulation(dynGraph, fname, n_sims=500, beta = 0.25, gamma = 0.055, seed=2024):
     # run n_sims simulations of SIR model
     # for each set of parameter (β, µ) = {(0.25, 0.055), (0.13, 0.1), (0.13, 0.055), (0.13, 0.01), (0.01, 0.055)}.
     # the simulation is accepted when there is still at least one infectious node when more than half of the total data set time span has elapsed (i.e., |I_{|T|/2}| ≥ 1).
@@ -149,7 +150,9 @@ def run_SIR_simulation(dynGraph, n_sims=500, beta = 0.25, gamma = 0.055, seed=20
     # visualize the simulation
     # trends = model.build_trends(system_status)
     # viz = DiffusionTrend(model, trends)
-    # viz.plot("diffusion")
+    # viz.plot("sir_viz_{}".format(fname))
+    # plot cs, ci, cr over time
+    
     return system_status
 
 def convert_file_to_dynetx_format(path, newpath):
@@ -161,7 +164,8 @@ def convert_file_to_dynetx_format(path, newpath):
 
 def extract_info(data_name):
     SEED = 2024
-    cache_path = 'src/co-presence/co-presence/{}.cache'.format(data_name)
+    datadir = 'src/co-presence'
+    cache_path = datadir + '/{}.cache'.format(data_name)
     #
     if os.path.exists(cache_path):
         print('loading from cache: {}'.format(cache_path))
@@ -169,11 +173,11 @@ def extract_info(data_name):
             node_idx_mapping, graphs, label_matrix = pickle.load(f)
     else:
         if data_name == 'SFHH':
-            data = load_sfhh()
+            data = load_sfhh(datadir)
         elif data_name == 'LH10':
-            data = load_hospital()
+            data = load_hospital(datadir)
         elif data_name == 'InVS15':
-            data = load_invs15()
+            data = load_invs15(datadir)
 
         
         node_idx_mapping, graphs = create_graph(data)
@@ -189,14 +193,33 @@ def extract_info(data_name):
 
         beta, gamma = (0.25, 0.055)
         print('beta: {}, gamma: {}'.format(beta, gamma))
-        system_status = run_SIR_simulation(dynGraph, beta=beta, gamma=gamma, seed=SEED)
-
+        system_status = run_SIR_simulation(dynGraph, fname=data_name, beta=beta, gamma=gamma, seed=SEED)
+        #
+        cs, ci, cr = [], [], []
+        for t, status in enumerate(system_status):
+            cs.append(status['node_count'][0])
+            ci.append(status['node_count'][1])
+            cr.append(status['node_count'][2])
+        plt.figure()
+        plt.plot(cs, label='susceptible')
+        plt.plot(ci, label='infected')
+        plt.plot(cr, label='recovered')
+        plt.legend()
+        plt.title('SIR over time')
+        plt.ylabel('#Nodes')
+        plt.xlabel('Time')
+        plt.savefig('sir_{}.png'.format(data_name))
+        plt.close()
+        #
         label_matrix = np.zeros((len(system_status), len(node_idx_mapping))) - 1 # -1 means not active nodes
         for t, graph in enumerate(graphs):
-            status = copy.deepcopy(system_status[t-1]['status'])
-            status.update(system_status[t]['status'])
+            if t > 0:
+                status = copy.deepcopy(system_status[t-1]['status'])
+                status.update(system_status[t]['status'])
+            else:
+                status = system_status[t]['status']
             system_status[t]['status'] = status
-            for node in graph.nodes():
+            for node in status.keys():
                 label_matrix[t, int(node)] = status[node]
         #
         with open(cache_path, 'wb') as f:
@@ -209,6 +232,12 @@ if __name__ == '__main__':
     for data_name in ['SFHH', 'LH10', 'InVS15']:
         print('data_name: ', data_name)
         node_idx_mapping, graphs, label_matrix = extract_info(data_name)
+        # inspect label matrix
+        assert (label_matrix == -1).sum() == 0
+        # make sure if a node is infected, it will remain infected or recovered
+        for t in range(label_matrix.shape[0]):
+            if t > 0:
+                assert (label_matrix[t] >= label_matrix[t-1]).all()
         print('='*20)
 """
 data_name:  SFHH
