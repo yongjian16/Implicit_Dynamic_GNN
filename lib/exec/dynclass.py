@@ -140,7 +140,7 @@ def main(*ARGS):
     winsize = {
         "Brain10": 12, "DynCSL": 8, "Reddit4": 10,
         "IMDB": 61, "UIHC": 6, "DBLP5": 10, 
-        "SFHH": 10, "LH10": 10, "InVS15": 10
+        "SFHH": 7, "LH10": 7, "InVS15": 7
     }[source]
     
     window_future_size = {

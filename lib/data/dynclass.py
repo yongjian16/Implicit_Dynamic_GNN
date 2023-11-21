@@ -760,22 +760,23 @@ class SocioPatterns(DynamicClassification):
         # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
         node_idx_mapping, graphs, label_matrix = extract_info(self.SOURCE)
         # create one-hot encoding for node_features
-        node_features = onp.zeros((len(node_idx_mapping), len(node_idx_mapping)))
-        for i in range(len(node_idx_mapping)):
-            node_features[i, i] = 1
+        # node_features = onp.zeros((len(node_idx_mapping), len(node_idx_mapping)))
+        # for i in range(len(node_idx_mapping)):
+        #     node_features[i, i] = 1
         # add all the nodes that are not in the graph
         for graph in graphs:
             graph.add_nodes_from(list(set(node_idx_mapping.values()) - set(graph.nodes())))
 
         self.num_times = len(graphs)
         self.num_nodes = len(node_idx_mapping)
-        self.raw_node_feats = node_features # static
         # make unkwown labels -1 to 0 as susceptible
         label_matrix[label_matrix == -1] = 0
         label_matrix = label_matrix.astype(int)[..., None]
         assert label_matrix.shape == (self.num_times, self.num_nodes, 1)
         self.raw_node_labels = label_matrix # num_timesteps, num_nodes {0, 1, 2}
-        
+        #
+        self.raw_node_feats = label_matrix # static
+        #
         self.num_labels = 3
         # self.label_counts = [sum(self.raw_node_labels == i) for i in range(self.num_labels)]
         # lb_cnts = onp.array(self.label_counts)
@@ -812,9 +813,9 @@ class SocioPatterns(DynamicClassification):
         #
         # node_feats = onp.transpose(self.raw_node_feats, (0, 2, 1))
         # num_nodes = len(node_feats)
-        node_feats = self.raw_node_feats[..., None].repeat(self.num_times, axis=-1)
+        # node_feats = self.raw_node_feats[..., None].repeat(self.num_times, axis=-1)
+        node_feats = onp.transpose(self.raw_node_feats, (1, 2, 0))
         node_labels = onp.transpose(self.raw_node_labels, (1, 2, 0)) # (num_nodes, num_feats, num_times)
-
         #
         edge_feats = []
         edge_labels = []

@@ -1402,6 +1402,7 @@ class DynamicAdjacencyListDynamicEdge(DynamicGraph):
             node_times_input_numpy = (
                 onp.transpose(node_times_input_numpy, (1, 0, 2))
             )
+        
         if len(self) == 1 and self.winaggr != self.WINAGG_NONE:
             #
             return (

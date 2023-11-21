@@ -255,7 +255,7 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
 
 if __name__ == '__main__':
     
-
+    # python agg_results.py --dataset <> --task cls --framework induc --metric ROCAUC --dynedge none --lr 0.001 --seed '*' --exp-name ""
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='Brain10')
     parser.add_argument('--task', type=str, default='cls', help='cls/reg')
@@ -268,6 +268,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=str, default="*", help="* for average all seeds, or a value 56/57/...")
     parser.add_argument('--exp-name', type=str, default="", help="experiment name")
     parser.add_argument('--model_plot', type=str, default=None, help="name of model to plot, EvoGCNOx2, EvoGCNHx2, GCNx2oGRU, DySATx2, GCRNM2x2, DCRNNx2, TGATx2, TGNOptimLx2, GRUoGCN2x2, IDGNN")
+    parser.add_argument('--best-eval', action='store_true', help="plot best eval")
     args = parser.parse_args()
 
     dataset = args.dataset
@@ -336,3 +337,4 @@ if __name__ == '__main__':
                 std = np.std(timecosts[method])
 
                 print(f'{mean:.4f}\u00B1{std:.4f}')
+
