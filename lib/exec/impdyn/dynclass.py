@@ -9,7 +9,7 @@ from ..arguments.dynclass import add_dynclass_arguments
 from ..arguments.neuralnet import add_neuralnet_arguments
 from ..arguments.tune import add_tune_arguments
 from ..utils.floatrep import floatrep
-from ...data.dynclass import Brain10, DynCSL, IMDB, UIHC, DBLP5, Reddit4
+from ...data.dynclass import Brain10, DynCSL, IMDB, UIHC, DBLP5, Reddit4, SFHH, LH10, InVS15
 from ..model import encoderize, TIMESTAMPED, NOTEMBEDS, PRETAINABLES
 from ...task.impdyn_cls import ImpDynModelCls
 from ...task.dyncsl import GraphWindowClassification
@@ -140,14 +140,23 @@ def main(*ARGS):
     train_prop_tuple = (train_prop_num, train_prop_den, train_prop_neg)
 
     # Translate arguments.
-    datasetize = {"Brain10": Brain10, "DynCSL": DynCSL, "Reddit4": Reddit4,
-                  "IMDB": IMDB, "UIHC": UIHC, "DBLP5": DBLP5}[source]
+    datasetize = {
+        "Brain10": Brain10, "DynCSL": DynCSL, "Reddit4": Reddit4,
+        "IMDB": IMDB, "UIHC": UIHC, "DBLP5": DBLP5, 
+        "SFHH": SFHH, "LH10": LH10, "InVS15": InVS15
+    }[source]
     
-    winsize = {"Brain10": 12, "DynCSL": 8, "Reddit4": 10,
-               "IMDB": 61, "UIHC": 6, "DBLP5": 10}[source]
+    winsize = {
+        "Brain10": 12, "DynCSL": 8, "Reddit4": 10,
+        "IMDB": 61, "UIHC": 6, "DBLP5": 10, 
+        "SFHH": 10, "LH10": 10, "InVS15": 10
+    }[source]
     
-    window_future_size = {"Brain10": 0, "DynCSL": 0, "Reddit4": 0,
-                          "IMDB": 0, "UIHC": 1, "DBLP5": 0}[source]
+    window_future_size = {
+        "Brain10": 0, "DynCSL": 0, "Reddit4": 0,
+        "IMDB": 0, "UIHC": 1, "DBLP5": 0,
+        "SFHH": 1, "LH10": 1, "InVS15": 1
+    }[source]
 
     
     spindle = {"transductive": "node", "inductive": "time"}[frame]
@@ -228,8 +237,13 @@ def main(*ARGS):
             timestamped_node_feats=attach_node_time,
         )
     )
-    metaset.inputon(["none", "none", "all", "none"]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
-    metaset.targeton(["none", "none", "none", targeton]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
+    if source in ["SFHH", "LH10", "InVS15"]:
+        metaset.inputon(["all", "none", "all", "none"]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
+        metaset.targeton(["none", "none", "none", targeton]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
+    else:
+        metaset.inputon(["none", "none", "all", "none"]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
+        metaset.targeton(["none", "none", "none", targeton]) # (on_edge_feat, on_edge_label, on_node_feat, on_node_label)
+        
     print(metaset)
 
     # Prepare EngCOVID model.

@@ -9,3 +9,4 @@ log/
 .rsync.ignore
 note.md
 *.bkp
+*.pyc

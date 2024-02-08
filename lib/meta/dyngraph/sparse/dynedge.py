@@ -1371,6 +1371,7 @@ class DynamicAdjacencyListDynamicEdge(DynamicGraph):
                 target_begin, target_end, 0.0,
             )
         )
+
         node_labels_target_numpy = (
             fetch(
                 self.node_labels, self.node_label_target, self.dyn_node_labels,
@@ -1401,6 +1402,7 @@ class DynamicAdjacencyListDynamicEdge(DynamicGraph):
             node_times_input_numpy = (
                 onp.transpose(node_times_input_numpy, (1, 0, 2))
             )
+        
         if len(self) == 1 and self.winaggr != self.WINAGG_NONE:
             #
             return (

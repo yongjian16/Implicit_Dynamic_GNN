@@ -4,6 +4,9 @@ from datetime import datetime
 # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
 data = bt.nc.DataLoader(dataset_path="./src/benchtemp_datasets/mooc/", dataset_name='mooc')
 
+# # For example, if you are training , you should create a training  RandEdgeSampler based on the training dataset.
+# data = bt.nc.DataLoader(dataset_path="./src/benchtemp_datasets/", dataset_name='reddit')
+
 # dataloader for dynamic node  classification task
 
 full_data, node_features, edge_features, train_data, val_data, test_data = data.load()

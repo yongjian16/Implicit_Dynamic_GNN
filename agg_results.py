@@ -144,7 +144,8 @@ def plot_curves(dataset, framework, metric, task, model_name, dynedge = None, lr
 
 
 
-def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr=None, wd='1e-5', patience=-1, seed = '*', rootdir='log', target = 'all', exp_name = ''):
+def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr=None, 
+               wd='1e-5', patience=-1, seed = '*', rootdir='log', target = 'all', exp_name = '', besteval=False):
     '''
     dataset: Brain10, EngCOVID
     framework: trans, induc
@@ -169,6 +170,10 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
     valset = {}
     memories = {}
     timecosts = {}
+    if besteval:
+        file_ext = 'ptbev'
+    else:
+        file_ext = 'ptlog'
     for model_name in model_names:
         res_test_seeds = []
         res_val_seeds = []
@@ -178,11 +183,11 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
             if seed == '*' or isinstance(seed, int):
                 fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.{file_ext}")
                 if len(exp_name) > 0:
                     fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.{file_ext}")
                 fpath_pattern = str(Path(rootdir) / fname_pattern)
                 all_fpaths = glob(fpath_pattern)
             elif isinstance(seed, list):
@@ -190,22 +195,22 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
                 for s in seed:
                     fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.{file_ext}")
                     if len(exp_name) > 0:
                         fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                     (f"_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.{file_ext}")
                     fpath_pattern = str(Path(rootdir) / fname_pattern)
                     all_fpaths += glob(fpath_pattern)
         else:
             if seed == '*' or isinstance(seed, int):
                 fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}.{file_ext}")
                 if len(exp_name) > 0:
                     fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{seed}~{exp_name}.{file_ext}")
                 fpath_pattern = str(Path(rootdir) / fname_pattern)
                 all_fpaths = glob(fpath_pattern)
             elif isinstance(seed, list):
@@ -213,11 +218,11 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
                 for s in seed:
                     fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                 (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.ptlog")
+                                f"~16~softplus_{lr}~{wd}~value~{patience}_{s}.{file_ext}")
                     if len(exp_name) > 0:
                         fname_pattern = (f"{dataset}~{target}~{framework}" + 
                                     (f"~{dynedge}_{model_name}" if dynedge is not None else f"_{model_name}") + 
-                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.ptlog")
+                                    f"~16~softplus_{lr}~{wd}~value~{patience}_{s}~{exp_name}.{file_ext}")
                     fpath_pattern = str(Path(rootdir) / fname_pattern)
                     all_fpaths += glob(fpath_pattern)
         
@@ -255,7 +260,7 @@ def parse_logs(dataset, framework, metric, task, model_names, dynedge = None, lr
 
 if __name__ == '__main__':
     
-
+    # python agg_results.py --dataset <> --task cls --framework induc --metric ROCAUC --dynedge none --lr 0.001 --seed '*' --exp-name ""
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='Brain10')
     parser.add_argument('--task', type=str, default='cls', help='cls/reg')
@@ -268,6 +273,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=str, default="*", help="* for average all seeds, or a value 56/57/...")
     parser.add_argument('--exp-name', type=str, default="", help="experiment name")
     parser.add_argument('--model_plot', type=str, default=None, help="name of model to plot, EvoGCNOx2, EvoGCNHx2, GCNx2oGRU, DySATx2, GCRNM2x2, DCRNNx2, TGATx2, TGNOptimLx2, GRUoGCN2x2, IDGNN")
+    parser.add_argument('--best-eval', action='store_true', help="plot best eval")
     args = parser.parse_args()
 
     dataset = args.dataset
@@ -283,11 +289,14 @@ if __name__ == '__main__':
     seed = eval(args.seed) if args.seed != '*' else '*'
     exp_name = args.exp_name
     wd = cast(str, args.weight_decay)
+    besteval = args.best_eval
 
     if args.model_plot is not None:
         plot_curves(dataset, framework, metric, task, args.model_plot, dynedge=dynedge, lr=lr, wd=wd, patience=patience, seed=seed, exp_name=exp_name)
     else:
-        valset, testset, memories, timecosts = parse_logs(dataset, framework, metric, task, model_names, dynedge=dynedge, lr=lr, wd=wd, patience=patience, seed=seed, exp_name=exp_name)
+        valset, testset, memories, timecosts = parse_logs(dataset, framework, metric, task, model_names, 
+                                                          dynedge=dynedge, lr=lr, wd=wd, patience=patience, 
+                                                          seed=seed, exp_name=exp_name, besteval=besteval)
         print(f"{metric} of {framework} task on {dataset}")
         for method in model_names:
             print(f'{method}')
@@ -336,3 +345,4 @@ if __name__ == '__main__':
                 std = np.std(timecosts[method])
 
                 print(f'{mean:.4f}\u00B1{std:.4f}')
+
